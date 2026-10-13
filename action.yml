@@ -6,9 +6,20 @@ inputs:
   token:
     description: GitHub token for Homebrew API requests
     default: ${{ github.token }}
+  setup-homebrew:
+    description: Set up Homebrew and link the checked-out repository in as the tap; set to false if your job already did
+    default: "true"
+  tap:
+    description: Tap to check, as user/repo; required when setup-homebrew is false
+    default: ""
   base:
     description: Commit to compare against; empty audits the whole tap and installs nothing
     default: ${{ github.event.pull_request.base.sha || github.event.before }}
+
+outputs:
+  failed:
+    description: Packages that failed and the stage they failed at, e.g. "user/tap/foo (test)"; comma-separated
+    value: ${{ steps.check.outputs.failed }}
 
 runs:
   using: composite
@@ -16,11 +27,13 @@ runs:
     # Installs Homebrew on Linux, updates it on macOS and links the checked-out commit in as the tap
     - name: Set up Homebrew
       id: brew
+      if: inputs.setup-homebrew == 'true'
       uses: Homebrew/actions/setup-homebrew@main
       with:
         token: ${{ inputs.token }}
 
     - name: Cache Homebrew RubyGems
+      if: inputs.setup-homebrew == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.brew.outputs.gems-path }}
@@ -40,19 +53,18 @@ runs:
         key: ${{ runner.os }}-downloads-${{ hashFiles('Formula/**', 'Casks/**') }}
         restore-keys: ${{ runner.os }}-downloads-
 
-    - name: Style
+    - name: Style, audit, install & test changes
+      id: check
       shell: bash -euo pipefail {0}
       env:
-        TAP: ${{ steps.brew.outputs.tap-name }}
-      run: brew style "$TAP"
-
-    - name: Audit, install & test changes
-      shell: bash -euo pipefail {0}
-      env:
-        TAP: ${{ steps.brew.outputs.tap-name }}
-        REPO: ${{ steps.brew.outputs.repository-path }}
+        TAP: ${{ inputs.tap || steps.brew.outputs.tap-name }}
         BASE: ${{ inputs.base }}
       run: |
+        : "${TAP:?Set the tap input when setup-homebrew is false}"
+        REPO=$(brew --repo "$TAP")
+
+        brew style "$TAP"
+
         # No diff (workflow_dispatch, new branch): audit everything, install nothing
         if [[ -z $BASE || $BASE =~ ^0+$ ]]; then
           if [[ $RUNNER_OS == Linux ]]; then
@@ -68,7 +80,7 @@ runs:
         changes=$(git -C "$REPO" diff --name-status --diff-filter=AMR "$BASE" HEAD -- Formula Casks)
 
         failed=()
-        while read -r status path renamed; do
+        while read -r status path renamed <&3; do
           path=${renamed:-$path}
           [[ $path == *.rb ]] || continue
           name="$TAP/$(basename "$path" .rb)"
@@ -78,17 +90,20 @@ runs:
           if [[ $path == Casks/* ]]; then
             [[ $RUNNER_OS == macOS ]] || continue
             echo "::group::$name (cask, $audit)"
-            brew install --cask "$name" &&
-              brew audit --cask --online "$audit" "$name" || failed+=("$name")
+            stage=install && brew install --cask "$name" &&
+              stage=audit && brew audit --cask --online "$audit" "$name" ||
+              failed+=("$name ($stage)")
           else
             echo "::group::$name (formula, $audit)"
-            brew install --formula --build-from-source "$name" &&
-              brew test "$name" &&
-              brew audit --formula --online "$audit" "$name" || failed+=("$name")
+            stage=install && brew install --formula --build-from-source "$name" &&
+              stage=test && brew test "$name" &&
+              stage=audit && brew audit --formula --online "$audit" "$name" ||
+              failed+=("$name ($stage)")
           fi
           echo "::endgroup::"
-        done <<< "$changes"
+        done 3<<< "$changes"
 
+        (IFS=,; echo "failed=${failed[*]}") >> "$GITHUB_OUTPUT"
         if (( ${#failed[@]} )); then
           printf '::error::Failed: %s\n' "${failed[@]}"
           exit 1

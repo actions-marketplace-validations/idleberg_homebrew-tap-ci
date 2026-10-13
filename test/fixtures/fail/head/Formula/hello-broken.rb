@@ -14,6 +14,6 @@ class HelloBroken < Formula
   end
 
   test do
-    assert_equal "Goodbye, world!\n", shell_output("#{bin}/hello-broken")
+    assert_equal "Goodbye, world!\n", shell_output(bin/"hello-broken")
   end
 end

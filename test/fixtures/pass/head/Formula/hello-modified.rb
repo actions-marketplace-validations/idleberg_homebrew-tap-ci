@@ -14,6 +14,6 @@ class HelloModified < Formula
   end
 
   test do
-    assert_equal "Hello, world!\n", shell_output("#{bin}/hello-modified")
+    assert_equal "Hello, world!\n", shell_output(bin/"hello-modified")
   end
 end

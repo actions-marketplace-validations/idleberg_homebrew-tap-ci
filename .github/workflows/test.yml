@@ -23,44 +23,55 @@ jobs:
         include:
           - fixture: pass
             expect: success
+            failed: ""
           - fixture: fail
             expect: failure
+            failed: ci/fixture/hello-broken (test)
     runs-on: ${{ matrix.os }}
 
     steps:
-      # The workspace root becomes the tap, so the action goes in a subdirectory
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Also checks this repository out into the workspace
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
         with:
-          path: action
+          token: ${{ github.token }}
 
-      # Commits the fixture's base state, then its head state on top
-      - name: Build fixture tap
+      # setup-homebrew owns the workspace, so the fixture becomes a separate tap with its own history
+      - name: Tap fixture
         id: tap
         env:
-          FIXTURE: action/test/fixtures/${{ matrix.fixture }}
+          FIXTURE: test/fixtures/${{ matrix.fixture }}
+          TAP_DIR: ${{ runner.temp }}/fixture-tap
         run: |
-          git init --quiet
-          git config user.name ci
-          git config user.email ci@localhost
-          echo action/ >> .git/info/exclude
+          git init --quiet "$TAP_DIR"
+          git -C "$TAP_DIR" config user.name ci
+          git -C "$TAP_DIR" config user.email ci@localhost
 
           for state in base head; do
-            rm -rf Formula Casks
-            [[ -d $FIXTURE/$state ]] && cp -R "$FIXTURE/$state/." .
-            git add --all
-            git commit --quiet --allow-empty --message "$state"
+            git -C "$TAP_DIR" rm -r --quiet --ignore-unmatch Formula Casks
+            [[ -d $FIXTURE/$state ]] && cp -R "$FIXTURE/$state/." "$TAP_DIR"
+            git -C "$TAP_DIR" add --all
+            git -C "$TAP_DIR" commit --quiet --allow-empty --message "$state"
           done
-          echo "base=$(git rev-parse HEAD~1)" >> "$GITHUB_OUTPUT"
+
+          brew tap ci/fixture "$TAP_DIR"
+          brew trust --tap ci/fixture
+          echo "base=$(git -C "$TAP_DIR" rev-parse HEAD~1)" >> "$GITHUB_OUTPUT"
 
       - name: Run action
-        id: ci
+        id: check
         continue-on-error: true
-        uses: ./action
+        uses: ./
         with:
+          setup-homebrew: false
+          tap: ci/fixture
           base: ${{ steps.tap.outputs.base }}
 
       - name: Expect ${{ matrix.expect }}
-        if: steps.ci.outcome != matrix.expect
+        if: steps.check.outcome != matrix.expect || steps.check.outputs.failed != matrix.failed
+        env:
+          OUTCOME: ${{ steps.check.outcome }}
+          FAILED: ${{ steps.check.outputs.failed }}
         run: |
-          echo "::error::Expected ${{ matrix.expect }}, got ${{ steps.ci.outcome }}"
+          echo "::error::Expected ${{ matrix.expect }} with failed='${{ matrix.failed }}', got $OUTCOME with failed='$FAILED'"
           exit 1
