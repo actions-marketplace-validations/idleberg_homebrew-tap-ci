@@ -83,12 +83,12 @@ runs:
         changes=$(git -C "$REPO" diff --name-status --diff-filter=AMR "$BASE" HEAD -- Formula Casks)
 
         failed=()
-        while read -r status path renamed <&3; do
+        while read -r _ path renamed <&3; do
           path=${renamed:-$path}
           [[ $path == *.rb ]] || continue
           name="$TAP/$(basename "$path" .rb)"
-          # Modified keeps its name; added or renamed is new to the tap
-          [[ $status == M ]] && audit=--strict || audit=--new
+          # Not --new: its notability and signing checks are for Homebrew's official taps
+          audit=--strict
 
           if [[ $path == Casks/* ]]; then
             [[ $RUNNER_OS == macOS ]] || continue

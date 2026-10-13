@@ -4,10 +4,11 @@ GitHub Action for Homebrew taps, following the checks in the [homebrew-core PR t
 
 For every formula or cask changed by a push or pull request:
 
-| Change           | Formula                                                 | Cask (macOS only)              |
-| ---------------- | ------------------------------------------------------- | ------------------------------ |
-| added or renamed | install from source, `brew test`, `brew audit --new`    | install, `brew audit --new`    |
-| modified         | install from source, `brew test`, `brew audit --strict` | install, `brew audit --strict` |
+| Formula                                                 | Cask (macOS only)              |
+| ------------------------------------------------------- | ------------------------------ |
+| install from source, `brew test`, `brew audit --strict` | install, `brew audit --strict` |
+
+There's no `--new` audit: its notability and signing checks are meant for Homebrew's official taps.
 
 `brew style` always runs on the whole tap. Manual runs (`workflow_dispatch`) audit the whole tap with `--strict` and install nothing.
 
