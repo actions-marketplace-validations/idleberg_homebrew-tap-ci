@@ -1,0 +1,95 @@
+name: Homebrew Tap CI
+description: Style-checks, audits, installs and tests the formulae and casks a push or pull request changes
+author: idleberg
+
+inputs:
+  token:
+    description: GitHub token for Homebrew API requests
+    default: ${{ github.token }}
+  base:
+    description: Commit to compare against; empty audits the whole tap and installs nothing
+    default: ${{ github.event.pull_request.base.sha || github.event.before }}
+
+runs:
+  using: composite
+  steps:
+    # Installs Homebrew on Linux, updates it on macOS and links the checked-out commit in as the tap
+    - name: Set up Homebrew
+      id: brew
+      uses: Homebrew/actions/setup-homebrew@main
+      with:
+        token: ${{ inputs.token }}
+
+    - name: Cache Homebrew RubyGems
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.brew.outputs.gems-path }}
+        key: ${{ runner.os }}-rubygems-${{ steps.brew.outputs.gems-hash }}
+        restore-keys: ${{ runner.os }}-rubygems-
+
+    - name: Locate Homebrew cache
+      id: cache-path
+      shell: bash -euo pipefail {0}
+      run: echo "path=$(brew --cache)" >> "$GITHUB_OUTPUT"
+
+    # Safe to share: brew verifies every download against its checksum
+    - name: Cache Homebrew downloads
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.cache-path.outputs.path }}
+        key: ${{ runner.os }}-downloads-${{ hashFiles('Formula/**', 'Casks/**') }}
+        restore-keys: ${{ runner.os }}-downloads-
+
+    - name: Style
+      shell: bash -euo pipefail {0}
+      env:
+        TAP: ${{ steps.brew.outputs.tap-name }}
+      run: brew style "$TAP"
+
+    - name: Audit, install & test changes
+      shell: bash -euo pipefail {0}
+      env:
+        TAP: ${{ steps.brew.outputs.tap-name }}
+        REPO: ${{ steps.brew.outputs.repository-path }}
+        BASE: ${{ inputs.base }}
+      run: |
+        # No diff (workflow_dispatch, new branch): audit everything, install nothing
+        if [[ -z $BASE || $BASE =~ ^0+$ ]]; then
+          if [[ $RUNNER_OS == Linux ]]; then
+            brew audit --strict --online --tap "$TAP" --formula
+          else
+            brew audit --strict --online --tap "$TAP"
+          fi
+          exit 0
+        fi
+
+        git -C "$REPO" cat-file -e "$BASE^{commit}" 2>/dev/null ||
+          git -C "$REPO" fetch --quiet --depth=1 origin "$BASE"
+        changes=$(git -C "$REPO" diff --name-status --diff-filter=AMR "$BASE" HEAD -- Formula Casks)
+
+        failed=()
+        while read -r status path renamed; do
+          path=${renamed:-$path}
+          [[ $path == *.rb ]] || continue
+          name="$TAP/$(basename "$path" .rb)"
+          # Modified keeps its name; added or renamed is new to the tap
+          [[ $status == M ]] && audit=--strict || audit=--new
+
+          if [[ $path == Casks/* ]]; then
+            [[ $RUNNER_OS == macOS ]] || continue
+            echo "::group::$name (cask, $audit)"
+            brew install --cask "$name" &&
+              brew audit --cask --online "$audit" "$name" || failed+=("$name")
+          else
+            echo "::group::$name (formula, $audit)"
+            brew install --formula --build-from-source "$name" &&
+              brew test "$name" &&
+              brew audit --formula --online "$audit" "$name" || failed+=("$name")
+          fi
+          echo "::endgroup::"
+        done <<< "$changes"
+
+        if (( ${#failed[@]} )); then
+          printf '::error::Failed: %s\n' "${failed[@]}"
+          exit 1
+        fi

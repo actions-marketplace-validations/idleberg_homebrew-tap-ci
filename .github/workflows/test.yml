@@ -1,0 +1,66 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+jobs:
+  fixture:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        fixture: [pass, fail]
+        include:
+          - fixture: pass
+            expect: success
+          - fixture: fail
+            expect: failure
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # The workspace root becomes the tap, so the action goes in a subdirectory
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: action
+
+      # Commits the fixture's base state, then its head state on top
+      - name: Build fixture tap
+        id: tap
+        env:
+          FIXTURE: action/test/fixtures/${{ matrix.fixture }}
+        run: |
+          git init --quiet
+          git config user.name ci
+          git config user.email ci@localhost
+          echo action/ >> .git/info/exclude
+
+          for state in base head; do
+            rm -rf Formula Casks
+            [[ -d $FIXTURE/$state ]] && cp -R "$FIXTURE/$state/." .
+            git add --all
+            git commit --quiet --allow-empty --message "$state"
+          done
+          echo "base=$(git rev-parse HEAD~1)" >> "$GITHUB_OUTPUT"
+
+      - name: Run action
+        id: ci
+        continue-on-error: true
+        uses: ./action
+        with:
+          base: ${{ steps.tap.outputs.base }}
+
+      - name: Expect ${{ matrix.expect }}
+        if: steps.ci.outcome != matrix.expect
+        run: |
+          echo "::error::Expected ${{ matrix.expect }}, got ${{ steps.ci.outcome }}"
+          exit 1
