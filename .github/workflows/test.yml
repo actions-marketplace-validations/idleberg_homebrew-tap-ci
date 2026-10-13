@@ -35,6 +35,8 @@ jobs:
         uses: Homebrew/actions/setup-homebrew@main
         with:
           token: ${{ github.token }}
+          # Latest Homebrew release, what users run, rather than unreleased main
+          stable: true
 
       # setup-homebrew owns the workspace, so the fixture becomes a separate tap with its own history
       - name: Tap fixture

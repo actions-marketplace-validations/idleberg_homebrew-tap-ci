@@ -31,6 +31,8 @@ runs:
       uses: Homebrew/actions/setup-homebrew@main
       with:
         token: ${{ inputs.token }}
+        # Latest Homebrew release, what users run, rather than unreleased main
+        stable: true
 
     - name: Cache Homebrew RubyGems
       if: inputs.setup-homebrew == 'true'

@@ -38,12 +38,12 @@ jobs:
 
 ### Inputs
 
-| Input            | Default                                 | Description                                                                                  |
-| ---------------- | --------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `setup-homebrew` | `true`                                  | Set up Homebrew and tap the checked-out repository. Set to `false` if your job already does. |
-| `tap`            | current repository                      | Tap to check, as `user/repo`. The `homebrew-` prefix is optional.                            |
-| `base`           | pull request base, or previous push tip | Commit to compare against. Empty audits the whole tap and installs nothing.                  |
-| `token`          | `github.token`                          | GitHub token passed to `setup-homebrew`.                                                     |
+| Input            | Default                                 | Description                                                                                                     |
+| ---------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `setup-homebrew` | `true`                                  | Set up the latest Homebrew release and tap the checked-out repository. Set to `false` if your job already does. |
+| `tap`            | current repository                      | Tap to check, as `user/repo`. The `homebrew-` prefix is optional.                                               |
+| `base`           | pull request base, or previous push tip | Commit to compare against. Empty audits the whole tap and installs nothing.                                     |
+| `token`          | `github.token`                          | GitHub token passed to `setup-homebrew`.                                                                        |
 
 ### Outputs
 
