@@ -41,7 +41,7 @@ jobs:
 | Input            | Default                                 | Description                                                                                  |
 | ---------------- | --------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `setup-homebrew` | `true`                                  | Set up Homebrew and tap the checked-out repository. Set to `false` if your job already does. |
-| `tap`            | the tap set up by `setup-homebrew`      | Tap to check, as `user/repo`. Required when `setup-homebrew` is `false`.                     |
+| `tap`            | current repository                      | Tap to check, as `user/repo`. The `homebrew-` prefix is optional.                            |
 | `base`           | pull request base, or previous push tip | Commit to compare against. Empty audits the whole tap and installs nothing.                  |
 | `token`          | `github.token`                          | GitHub token passed to `setup-homebrew`.                                                     |
 

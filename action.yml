@@ -10,8 +10,8 @@ inputs:
     description: Set up Homebrew and link the checked-out repository in as the tap; set to false if your job already did
     default: "true"
   tap:
-    description: Tap to check, as user/repo; required when setup-homebrew is false
-    default: ""
+    description: Tap to check, as user/repo
+    default: ${{ github.repository }}
   base:
     description: Commit to compare against; empty audits the whole tap and installs nothing
     default: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -57,10 +57,11 @@ runs:
       id: check
       shell: bash -euo pipefail {0}
       env:
-        TAP: ${{ inputs.tap || steps.brew.outputs.tap-name }}
+        TAP: ${{ inputs.tap }}
         BASE: ${{ inputs.base }}
       run: |
-        : "${TAP:?Set the tap input when setup-homebrew is false}"
+        # brew's short name: idleberg/homebrew-tap -> idleberg/tap
+        TAP=${TAP/\/homebrew-//}
         REPO=$(brew --repo "$TAP")
 
         brew style "$TAP"
