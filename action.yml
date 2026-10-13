@@ -104,7 +104,7 @@ runs:
           echo "::endgroup::"
         done 3<<< "$changes"
 
-        (IFS=,; echo "failed=${failed[*]}") >> "$GITHUB_OUTPUT"
+        (IFS=,; echo "failed=${failed[*]-}") >> "$GITHUB_OUTPUT"
         if (( ${#failed[@]} )); then
           printf '::error::Failed: %s\n' "${failed[@]}"
           exit 1
